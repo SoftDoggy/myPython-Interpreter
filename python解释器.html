@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="GBK">
+<title>Python解释器</title>
+</head>
+<style>
+  .CodeMirror {
+    font-size:12px;
+    height:450px;
+  }
+  #textareaCode {
+    height: 450px;
+  }
+  #result {
+      height: 450px;
+  }
+  #iframeResult {
+    border: 0!important;
+    min-width: 100px;
+    width: 100%;
+    height: 450px;
+    background-color: #fff;
+  }
+  @media screen and (max-width: 768px) {
+    #textareaCode {
+      height: 300px;
+    }
+    #textareaCode2 {
+        height: 300px;
+    }
+    .CodeMirror {
+      font-size:12px;
+      height:300px;
+    }
+    #iframeResult {
+     height: 300px;
+    }
+    .form-inline {
+      padding: 6px 0 2px 0;
+    }
+  }
+  </style>
+  <link href="http://cdn.static.runoob.com/libs/bootstrap/3.3.7/css/bootstrap.min.css" rel="stylesheet">
+  <script src="http://static.runoob.com/assets/CodeMirror/mode/xml/xml.js"></script>
+  <script src="http://static.runoob.com/assets/CodeMirror/lib/codemirror.min.js"></script>
+  <link rel="stylesheet" href="http://static.runoob.com/assets/CodeMirror/lib/codemirror.min.css">
+  <script src="./mypython-complete.js"></script>
+<body>
+<div>
+	<h1>Python解释器</h1>
+</div>
+<br><br>	
+<div class="container" style="width:100%;height:100%; font-size:12px;">
+	<div class="row" style="background-color: #e5eecc;">
+      <div class="panel panel-default" style="margin-bottom:0;">
+   
+  
+      <div class="panel-body" style="background-color: #e5eecc;border-color: #e5eecc;">
+	<form autocomplete="off" role="form">
+	<div class="col-sm-6" id="LeftPane">
+	<div class="row-fluid">
+                   <label class="inline" ><strong style="font-size: 16px;color:#617f10;"> 源代码:</strong></label>
+                   <input id="submitBTN"  onclick="submitTryit()" type="button" class="pull-right inline" value="提交运行 &#187;" >
+                   <input type="hidden" id="bt" name="bt"> 
+                    <input type="hidden" name="code" id="code" />
+                    </div>
+	<textarea class="form-control"  id="textareaCode" name="textareaCode" >
+x=y=1
+z=aa=2
+if x==1:
+z=4
+;
+print  aa,"The value of z is",z
+
+a=1
+for i in range(1,10):
+a=a+i;
+print  "The value of a is",a
+    </textarea>
+	</div>
+	<div class="col-sm-6" id="RightPane">                 
+                  <label><strong style="font-size: 16px;color:#617f10;"> 运行结果：</strong></label> 
+	<div id="iframewrapper"></div>
+	<textarea class="form-control"  id="result" name="textareaCode2" ></textarea>
+        </div></div></div>
+    </form></div></div></div>
+</div>
+<script type="text/javascript">
+    function firstStepDone() {
+        document.getElementById("result").value="";
+        Interpret(localStorage.getItem(1));
+
+    }
+
+
+    var stack = [];
+
+    function Variable(name, value) {
+        this.name = name;
+        this.value = value;
+    }
+
+    var start, end;
+    function Interpret(code) {
+        var j = 0;
+        var statement = code.split("\n");
+        var arrall = [];
+
+        //Extract all strings in the statement
+        while(j < statement.length){
+
+            var arrStr = [];
+            var str, strBegin, strEnd = 0;
+
+            strBegin = statement[j].indexOf("\"");
+            while(strBegin !== -1) {
+                strEnd = statement[j].indexOf("\"", strBegin+1);
+                if(strEnd === -1)
+                    alert(`SyntaxError: EOL while scanning string literal`);
+                str = statement[j].substring(strBegin, strEnd+1);
+                statement[j] = statement[j].replace(str, "\"PlaceHolder\"");
+                arrStr.push(str);
+                strBegin = statement[j].indexOf("\"", strBegin+13);
+            }
+
+            var arrStmt = statement[j].split(" ");
+
+            for(var i = arrStmt.length-1; i >= 0; i--) {
+                if(arrStmt[i] === "\"PlaceHolder\"")
+                    arrStmt[i] = arrStr.pop();
+                //Get rid of empty elements
+                if(arrStmt[i] === "")
+                    arrStmt.splice(i, 1);
+            }
+
+            arrall[j] = arrStmt;
+            j++;
+        }
+        //store all elements in arrall.The elements in line 1 were stored in arrall[0]. and the first word in line 1 was stored in arrall[0][0].
+
+        j = 0;
+
+        //judge by the first word in each line, such as 'assign', 'print', 'if' and 'for'.
+        while(j < statement.length){
+            switch (arrall[j][0]){
+                case "assign":
+                    Assign(arrall[j].slice(1));
+                    j++;
+                    break;
+                case "print":
+                    Print(arrall[j].slice(1));
+                    j++;
+                    break;
+                case "if":
+                    var flag = 1;
+                    start = end = j;
+                    while(flag) //get the statements in if
+                    {
+                        j++;
+                        if(arrall[j][0] === "if")
+                            flag++;
+                        else if(arrall[j][0] === "endif")
+                            flag--;
+                    }
+                    end = j;
+                    while(start<=end)
+                    {
+                        DealIf(arrall);
+                    }
+                    container.length = 0;
+                    j++;
+                    break;
+                case "for":
+                    var index, varName ,lower ,upper,k,line,round,linenow;
+                    varName = arrall[j][1];
+
+                    lower = arrall[j][4];
+                    upper = arrall[j][6];
+
+                    //Seach the stack to see whether the variable is defined
+                    for (index = 0; index < stack.length; index++) {
+                        if(stack[index].name === varName)
+                            break;
+                    }
+
+                    //If the variable is not found in the stack, then define it first
+                    if(index === stack.length){
+                        stack.push(new Variable());
+
+                        //The index is the position of the variable
+                        stack[index].name = varName;
+                    }
+
+
+                    line = j;
+                    while(arrall[line][0] !== "endfor")
+                        line++;
+
+                    for (round = lower;round <= upper;round++){
+                        for (linenow = j+1;linenow < line;linenow++){
+                            for (index = 0; index < stack.length; index++) {
+                                if(stack[index].name === varName)
+                                    stack[index].value = round;
+                            }
+                            switch (arrall[linenow][0]){
+                                case "assign":
+                                    Assign(arrall[linenow].slice(1));
+                                    break;
+                                case "print":
+                                    Print(arrall[linenow].slice(1));
+                                    break;
+                                default:
+                                    j++;
+                                    break;
+                            }
+                        }
+                    }
+
+                    j = line;
+                    break;
+                case "endfor":
+                    j++;
+                    break;
+                default:
+                    j++;
+                    break;
+            }
+
+
+            // if(arrStmt[0] === "define")  //Interpret a define statement
+            //     Assign(arrStmt.slice(1));
+            // else if(arrStmt[0] === "assign")  //Interpret an assignment statement
+            //     Assign(arrStmt.slice(1));
+            // else if(arrStmt[0] === "print")  //Interpret a print statement
+            //  Print(arrStmt.slice(1));
+            // j++;
+
+        }
+    }
+
+    var container = [];
+    var tag;
+    var tal;
+    function DealIf(arrall)
+    {
+        var nvar = 1;
+        tal = 0;
+        switch(arrall[start][0]){
+            case "if":
+                if((container.length >= 1) && !If(arrall[container[container.length-1]].slice(1)))
+                    nvar = 0;
+                container.push(start);
+                if(If(arrall[start].slice(1)) && (nvar == 1))
+                {
+                    start++;
+                    tag = 1;
+                    DealIf(arrall);
+                }
+                else
+                {
+                    tag = 0;
+                    start++;
+                }
+                break;
+
+            case "else":
+            {
+                if(!If(arrall[container[container.length-1]].slice(1)))
+                    tag = 1;
+                else
+                    tag = 0;
+                start++;
+                break;
+            }
+
+            case "elif":
+            {
+                if((container.length >= 1) && If(arrall[container[container.length-1]].slice(1)))
+                    nvar = 0;
+                container.push(start);
+                if(If(arrall[start].slice(1)) && (nvar == 1))
+                {
+                    start++;
+                    tag = 1;
+                    DealIf(arrall);
+                }
+                else
+                {
+                    tag = 0;
+                    start++;
+                }
+                break;
+            }
+
+            case "endif":
+            {
+                if((tag == 1) && (tal == 1))
+                    start = end + 1;
+                else
+                    start++;
+                container.pop();
+                break;
+            }
+
+            default:
+            {
+                if(tag == 1)
+                {
+                    var index;
+                    for(index = 0; index < stack.length; index++)
+                    {
+                        if(stack[index].name === arrall[start][1])
+                            break;
+                    }
+                    if(index === stack.length)
+                    {
+                        stack.push(new Variable());
+                        stack[index].name = arrall[start][1];
+                    }
+                    switch(arrall[start][0]){
+                        case "assign":
+                            Assign(arrall[start].slice(1));
+                            break;
+                        case "print":
+                            Print(arrall[start].slice(1));
+                            break;
+                    }
+                    if((arrall[start+1][0] != "assign") && (arrall[start+1][0] != "print"))
+                        start = end + 1;
+                    tal = 1;
+                }
+                else
+                    start++;
+
+                break;
+            }
+        }
+    }
+
+    //comparison operators ">" "<" ">=" "<=" "==" "!="
+    function If(varStmt)
+    {
+        varStmt[0] = GetValue(varStmt[0]);
+        if(varStmt[1] === ">")
+            return (varStmt[0] > varStmt[2]) ? true : false;
+
+        if(varStmt[1] === "<")
+            return (varStmt[0] < varStmt[2]) ? true : false;
+
+        if(varStmt[1] === ">=")
+            return (varStmt[0] >= varStmt[2]) ? true : false;
+
+        if(varStmt[1] === "<=")
+            return (varStmt[0] <= varStmt[2]) ? true : false;
+
+        if(varStmt[1] === "==")
+            return (varStmt[0] == varStmt[2]) ? true : false;
+
+        if(varStmt[1] === "!=")
+            return (varStmt[0] != varStmt[2]) ? true : false;
+    }
+
+
+    //Determine whether the str is a string
+    function isString(str) {
+        if((typeof str) === "string")
+            if(str[0] === "\"" && str[str.length-1] === "\"")
+                return true;
+
+        return false;
+    }
+
+    //Determine whether the str is a variable
+    function isVariable(str) {
+        if(isNaN(str))
+            if(str[0] !== "\"" && str[str.length-1] !== "\"")
+                return true;
+
+        return false;
+    }
+
+    //Get the content of a string
+    function GetString(str) {
+        return str.substring(1, str.length-1);
+    }
+
+    //Get the value of a variable
+    function GetValue(varName) {
+        var i;
+        for (i = 0; i < stack.length; i++) {
+            if(stack[i].name === varName)
+                return stack[i].value;
+        }
+
+        //The variable is not found in the stack
+        alert(`NameError: name '${varName}' is not defined`);
+    }
+
+
+    /* Assign a value to a variable,
+     if the variable is not defined, then define it first */
+    function Assign(arrStmt) {
+        var index, varName, rightHand;
+
+        varName = arrStmt[0];
+
+        //Seach the stack to see whether the variable is defined
+        for (index = 0; index < stack.length; index++) {
+            if(stack[index].name === varName)
+                break;
+        }
+
+        //If the variable is not found in the stack, then define it first
+        if(index === stack.length){
+            stack.push(new Variable());
+
+            //The index is the position of the variable
+            stack[index].name = varName;
+        }
+
+        //Change the value of the variable
+        if(arrStmt.length > 4) {  //the assigned value is a expression
+
+            rightHand = arrStmt.slice(2);  //rightHand is the part on the right of "="
+
+            //Determine rightHand is a assignment or a calculation
+            if(rightHand.indexOf("=") !== -1)
+                stack[index].value = Assign(rightHand)
+            else {
+                var result = Calculate(rightHand);
+                if(isString(result))
+                    stack[index].value = GetString(result);
+                else
+                    stack[index].value = result;
+            }
+        } else {  //the assigned is a value
+
+            rightHand = arrStmt[2];  //rightHand is the part on the right of "="
+
+            if(!isNaN(rightHand))  //the assigned is a number
+                stack[index].value = rightHand;
+            else if(isString(rightHand))  //the assigned is a string
+                stack[index].value = GetString(rightHand);
+            else  //the assigned is a variable
+                stack[index].value = GetValue(rightHand);
+        }
+
+        return stack[index].value;
+    }
+
+
+    function Calculate(arrExpr) {
+        var arrOprtr = [];
+        var arrOprd = [];
+        const operators = "+-*/()";
+        for (var i = 0; i < arrExpr.length; i++) {
+            //Determine arrExpr[i] is a operator or a operand
+            if (operators.indexOf(arrExpr[i]) !== -1) {
+                while (Precede(arrOprtr, arrExpr[i]))
+                    PopAndPush(arrOprtr, arrOprd);
+                if (arrExpr[i] !== ")")
+                    arrOprtr.push(arrExpr[i]);
+            } else {
+                if (!isNaN(arrExpr[i]))  //arrExpr[i] is a number
+                    arrOprd.push(Number(arrExpr[i]));
+                else if(isString(arrExpr[i]))  //arrExpr[i] is a string
+                    arrOprd.push(GetString(arrExpr[i]));
+                else  //arrExpr[i] is a variable
+                    arrOprd.push(GetValue(arrExpr[i]));
+            }
+        }
+
+        while(arrOprtr.length > 0)
+            PopAndPush(arrOprtr, arrOprd);
+
+        return arrOprd[0];  //arrOprd[0] is the final result
+    }
+
+    //Compare the priorities of lastest operator in the array and new operator
+    function Precede(arrOprtr, newOprtr) {
+        var arrLen = arrOprtr.length;
+
+        if(arrLen === 0)  //The array is empty
+            return false;
+        else if (Priority(arrOprtr[arrLen-1]) >= Priority(newOprtr))
+            return true;
+    }
+
+    //Determine the priority of the operator
+    function Priority(operator) {
+        if (operator === ")")
+            return 0;
+        else if (operator === "+" || operator === "-")
+            return 1;
+        else if (operator === "*" || operator === "/")
+            return 2;
+        else if (operator === "(")
+            return 3;
+        else
+            return -1;
+    }
+
+    /* Pop one operator and two operands and do calculation,
+     then push the result into the arrOprd */
+    function PopAndPush(arrOprtr, arrOprd) {
+        var operator = arrOprtr.pop();
+        if(operator !== "(") {
+            var operand2 = arrOprd.pop();
+            var operand1 = arrOprd.pop();
+            var expr = [];
+            expr.push(operand1);
+            expr.push(operator);
+            expr.push(operand2);
+            arrOprd.push(Arithmetic(expr));
+        }
+    }
+
+    function Arithmetic(expr) {
+        if(expr[1] === "+") {
+            if(!isNaN(expr[0]) && !isNaN(expr[2]))
+                return Number(expr[0]) + Number(expr[2]);
+            else if(isNaN(expr[0]) && isNaN(expr[2]))
+                return expr[0]+expr[2];
+            else
+                alert(`TypeError: cannot concatenate 'str' and 'int' objects`);
+        }
+        if(expr[1] === "-")
+            return Number(expr[0]) - Number(expr[2]);
+        if(expr[1] === "*")
+            return Number(expr[0]) * Number(expr[2]);
+        if(expr[1] === "/")
+            return Number(expr[0]) / Number(expr[2]);
+    }
+
+    //Print function
+    function Print(arrStmt) {
+        var arrLen = arrStmt.length;
+        var output = "";
+
+        for(var i = 0; i < arrLen; i++) {
+            if(arrStmt[i] === "endprint")
+                break;
+
+            else if(!isNaN(arrStmt[i]))  //arrStmt[i] is a number
+                output += Number(arrStmt[i]);
+            else if(isString(arrStmt[i]))  //arrStmt[i] is a string
+                output += GetString(arrStmt[i])
+            else //arrStmt[i] is a variable
+                output += GetValue(arrStmt[i]);
+        }
+
+        document.getElementById("result").value += output + "\n";
+    }
+
+</script>
+
+
+
+</body>
+</html>
